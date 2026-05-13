@@ -1,0 +1,20 @@
+{
+  "manifest_version": 3,
+  "name": "CrossScale: Number & Currency Converter",
+  "version": "1.9",
+  "description": "Converts Korean/English large numbers and currencies dynamically with a hover tooltip.",
+  "permissions": ["storage", "alarms"],
+  "background": {
+    "service_worker": "background.js"
+  },
+  "content_scripts": [
+    {
+      "matches": ["<all_urls>"],
+      "css": ["styles.css"],
+      "js": ["content.js"]
+    }
+  ],
+  "action": {
+    "default_popup": "popup.html"
+  }
+}

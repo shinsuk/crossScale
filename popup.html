@@ -1,0 +1,53 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8">
+  <title>CrossScale Settings</title>
+  <style>
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; width: 280px; padding: 16px; margin: 0; background: #f8f9fa; color: #212529; }
+    h2 { margin: 0 0 16px; font-size: 18px; color: #343a40; }
+    .setting-group { background: #fff; padding: 12px; border-radius: 8px; margin-bottom: 12px; box-shadow: 0 1px 3px rgba(0,0,0,0.05); }
+    .flex-row { display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; }
+    label { font-size: 14px; font-weight: 500; }
+    input[type="number"] { width: 80px; padding: 4px 8px; border: 1px solid #ced4da; border-radius: 4px; text-align: right; }
+    input[type="number"]:disabled { background: #e9ecef; }
+    .toggle { position: relative; display: inline-block; width: 40px; height: 22px; }
+    .toggle input { opacity: 0; width: 0; height: 0; }
+    .slider { position: absolute; cursor: pointer; top: 0; left: 0; right: 0; bottom: 0; background-color: #ccc; transition: .4s; border-radius: 22px; }
+    .slider:before { position: absolute; content: ""; height: 16px; width: 16px; left: 3px; bottom: 3px; background-color: white; transition: .4s; border-radius: 50%; }
+    input:checked + .slider { background-color: #0d6efd; }
+    input:checked + .slider:before { transform: translateX(18px); }
+    .info { font-size: 12px; color: #6c757d; margin-top: 4px; }
+  </style>
+</head>
+<body>
+  <h2>CrossScale 설정</h2>
+  
+  <div class="setting-group">
+    <div class="flex-row">
+      <label for="enable-extension">기능 켜기</label>
+      <label class="toggle">
+        <input type="checkbox" id="enable-extension">
+        <span class="slider"></span>
+      </label>
+    </div>
+  </div>
+
+  <div class="setting-group">
+    <div class="flex-row">
+      <label for="custom-rate-toggle">고정 환율 사용</label>
+      <label class="toggle">
+        <input type="checkbox" id="custom-rate-toggle">
+        <span class="slider"></span>
+      </label>
+    </div>
+    <div class="flex-row" style="margin-top: 12px;">
+      <label for="custom-rate-input">환율 (1달러당)</label>
+      <input type="number" id="custom-rate-input" min="500" max="3000" step="10">
+    </div>
+    <div class="info" id="current-rate-info">현재 API 환율: 불러오는 중...</div>
+  </div>
+
+  <script src="popup.js"></script>
+</body>
+</html>

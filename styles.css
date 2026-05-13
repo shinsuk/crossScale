@@ -1,0 +1,55 @@
+/* styles.css */
+.crossscale-highlight {
+  border-bottom: 1px dashed #007bff;
+  cursor: help;
+  position: relative;
+  display: inline-block;
+  background-color: rgba(0, 123, 255, 0.1);
+  border-radius: 2px;
+  padding: 0 2px;
+}
+
+#crossscale-tooltip {
+  position: absolute;
+  z-index: 2147483647; /* Max z-index */
+  background: rgba(33, 37, 41, 0.95);
+  color: #fff;
+  padding: 8px 12px;
+  border-radius: 6px;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  font-size: 14px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+  /* pointer-events: none; removed to allow clicking copy button */
+  opacity: 0;
+  transition: opacity 0.2s ease, transform 0.2s ease;
+  transform: translateY(5px);
+  white-space: nowrap;
+  backdrop-filter: blur(4px);
+  border: 1px solid rgba(255,255,255,0.1);
+}
+
+#crossscale-tooltip.visible {
+  opacity: 1;
+  transform: translateY(0);
+}
+
+.crossscale-tooltip-title {
+  font-size: 11px;
+  color: #adb5bd;
+  margin-bottom: 4px;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.crossscale-tooltip-value {
+  font-weight: 600;
+  font-size: 16px;
+  color: #f8f9fa;
+}
+
+.crossscale-tooltip-rate {
+  font-size: 10px;
+  color: #6c757d;
+  margin-top: 4px;
+  text-align: right;
+}
