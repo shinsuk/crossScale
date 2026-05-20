@@ -48,6 +48,14 @@
     <div class="info" id="current-rate-info">현재 API 환율: 불러오는 중...</div>
   </div>
 
+  <div class="setting-group">
+    <div style="margin-bottom: 8px; display: flex; justify-content: space-between; align-items: center;">
+      <label for="ignored-urls">예외 URL (시작 부분 일치, 각 줄에 하나씩)</label>
+      <button id="add-current-url" style="padding: 4px 8px; font-size: 12px; cursor: pointer; border: 1px solid #ced4da; border-radius: 4px; background: #fff;">현재 페이지 추가</button>
+    </div>
+    <textarea id="ignored-urls" rows="4" style="width: 100%; box-sizing: border-box; border: 1px solid #ced4da; border-radius: 4px; padding: 8px; resize: vertical;" placeholder="https://example.com/"></textarea>
+  </div>
+
   <script src="popup.js"></script>
 </body>
 </html>

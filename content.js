@@ -3,7 +3,8 @@ let settings = {
   enabled: true,
   customRateEnabled: false,
   customRate: 1350,
-  exchangeRate: 1350
+  exchangeRate: 1350,
+  ignoredUrls: []
 };
 
 // Regex Patterns
@@ -16,9 +17,13 @@ const enRegex = new RegExp(`(?:\\$)${sp}(?:${numPat})(?:\\.\\d+)?${sp}(?:T|B|M|T
 let tooltipEl = null;
 
 function init() {
-  chrome.storage.local.get(['enabled', 'customRateEnabled', 'customRate', 'exchangeRate'], (data) => {
+  chrome.storage.local.get(['enabled', 'customRateEnabled', 'customRate', 'exchangeRate', 'ignoredUrls'], (data) => {
     settings = { ...settings, ...data };
-    if (settings.enabled) {
+    
+    const currentUrl = window.location.href;
+    const isIgnored = settings.ignoredUrls && settings.ignoredUrls.some(url => currentUrl.startsWith(url));
+
+    if (settings.enabled && !isIgnored) {
       createTooltip();
       scanAndHighlight(document.body);
       setupObserver();
@@ -30,6 +35,7 @@ function init() {
     if (changes.customRateEnabled) settings.customRateEnabled = changes.customRateEnabled.newValue;
     if (changes.customRate) settings.customRate = changes.customRate.newValue;
     if (changes.exchangeRate) settings.exchangeRate = changes.exchangeRate.newValue;
+    if (changes.ignoredUrls) settings.ignoredUrls = changes.ignoredUrls.newValue;
   });
 }
 
@@ -201,18 +207,44 @@ function scanAndHighlight(root) {
         const afterStr = originalText.substring(nodeEnd);
         
         const parent = tn.node.parentNode;
-        const afterNode = document.createTextNode(afterStr);
+        if (!parent) continue;
         
+        const afterNode = document.createTextNode(afterStr);
         const span = document.createElement('span');
         span.className = 'crossscale-highlight';
         span.textContent = matchStr;
-        
         const beforeNode = document.createTextNode(beforeStr);
+
+        let origNode;
+        if (tn.node.__crossscale_injected) {
+            origNode = tn.node.__crossscale_origNode;
+            tn.node.replaceWith(beforeNode, span, afterNode);
+            if (origNode && origNode.__crossscale_injected_nodes) {
+                origNode.__crossscale_injected_nodes.delete(tn.node);
+                origNode.__crossscale_injected_nodes.add(beforeNode);
+                origNode.__crossscale_injected_nodes.add(span);
+                origNode.__crossscale_injected_nodes.add(afterNode);
+            }
+        } else {
+            origNode = tn.node;
+            origNode.nodeValue = ""; // Hide original text without removing node to avoid breaking SPA
+            
+            parent.insertBefore(beforeNode, origNode);
+            parent.insertBefore(span, origNode);
+            parent.insertBefore(afterNode, origNode);
+            
+            origNode.__crossscale_injected_nodes = new Set([beforeNode, span, afterNode]);
+        }
         
-        parent.insertBefore(afterNode, tn.node.nextSibling);
-        parent.insertBefore(span, afterNode);
-        parent.insertBefore(beforeNode, span);
-        parent.removeChild(tn.node);
+        beforeNode.__crossscale_injected = true;
+        span.__crossscale_injected = true;
+        afterNode.__crossscale_injected = true;
+        
+        beforeNode.__crossscale_origNode = origNode;
+        span.__crossscale_origNode = origNode;
+        afterNode.__crossscale_origNode = origNode;
+        
+        tn.node = beforeNode;
         
         if (matchStr.trim().length > 0) {
           highlightElements.push(span);
@@ -240,15 +272,36 @@ function setupObserver() {
     let shouldScan = false;
     for (const mutation of mutations) {
       if (mutation.type === 'childList') {
+        mutation.removedNodes.forEach(node => {
+          if (node.__crossscale_injected_nodes) {
+            node.__crossscale_injected_nodes.forEach(n => {
+              if (n.parentNode) n.parentNode.removeChild(n);
+            });
+            node.__crossscale_injected_nodes.clear();
+          }
+        });
+
         mutation.addedNodes.forEach(node => {
+          if (node.__crossscale_injected) return;
           if (node.nodeType === Node.TEXT_NODE || node.nodeType === Node.ELEMENT_NODE) {
             const el = node.nodeType === Node.ELEMENT_NODE ? node : node.parentElement;
             if (el && el.closest && el.closest('#crossscale-tooltip')) return;
+            if (node.nodeType === Node.ELEMENT_NODE && node.classList && node.classList.contains('crossscale-highlight')) return;
             shouldScan = true;
           }
         });
       } else if (mutation.type === 'characterData') {
-        const el = mutation.target.parentElement;
+        const node = mutation.target;
+        if (node.__crossscale_injected_nodes && node.nodeValue !== "") {
+          node.__crossscale_injected_nodes.forEach(n => {
+            if (n.parentNode) n.parentNode.removeChild(n);
+          });
+          node.__crossscale_injected_nodes.clear();
+        }
+        
+        if (node.__crossscale_injected) return;
+
+        const el = node.parentElement;
         if (el && el.closest && el.closest('#crossscale-tooltip')) return;
         shouldScan = true;
       }
@@ -307,7 +360,11 @@ let hideTimeout = null;
 
 function showTooltip(e, text) {
   clearTimeout(hideTimeout);
-  if (!settings.enabled) return;
+  
+  const currentUrl = window.location.href;
+  const isIgnored = settings.ignoredUrls && settings.ignoredUrls.some(url => currentUrl.startsWith(url));
+  
+  if (!settings.enabled || isIgnored) return;
   const result = convertValue(text);
   if (!result) return;
   

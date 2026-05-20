@@ -1,12 +1,16 @@
 /* styles.css */
 .crossscale-highlight {
-  border-bottom: 1px dashed #007bff;
-  cursor: help;
-  position: relative;
-  display: inline-block;
-  background-color: rgba(0, 123, 255, 0.1);
-  border-radius: 2px;
-  padding: 0 2px;
+  border-bottom: 1px dashed #007bff !important;
+  cursor: help !important;
+  position: relative !important;
+  display: inline !important;
+  background-color: rgba(0, 123, 255, 0.1) !important;
+  border-radius: 2px !important;
+  padding: 0 2px !important;
+  float: none !important;
+  margin: 0 !important;
+  line-height: inherit !important;
+  vertical-align: baseline !important;
 }
 
 #crossscale-tooltip {
