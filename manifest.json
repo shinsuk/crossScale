@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "CrossScale: Number & Currency Converter",
-  "version": "1.12.2",
+  "version": "1.12.3",
   "description": "Converts Korean/English large numbers and currencies dynamically with a hover tooltip.",
   "permissions": ["storage", "alarms", "activeTab"],
   "host_permissions": ["https://api.exchangerate-api.com/*"],

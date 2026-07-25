@@ -10,8 +10,8 @@ let settings = {
 // Regex Patterns
 const sp = "\\s*";
 const numPat = "[0-9]+(?:,[0-9]+)*";
-const krRegex = new RegExp(`(?:(?:${numPat})(?:\\.\\d+)?${sp}(?:경|조|억|만|천)${sp})+(?:(?:${numPat})${sp})?(?:원|달러|\\$|억원|만원|조원|경원)?`, "g");
-const enRegex = new RegExp(`(?:\\$)${sp}(?:${numPat})(?:\\.\\d+)?${sp}(?:T|B|M|Trillion|Billion|Million)(?:${sp}(?:dollars|USD))?|(?:${numPat})(?:\\.\\d+)?${sp}(?:T|B|M|Trillion|Billion|Million)\\b(?:${sp}(?:dollars|USD))?`, "ig");
+const krRegex = new RegExp(`\\b(?:(?:${numPat})(?:\\.\\d+)?${sp}(?:경|조|억|만|천)+${sp})+(?:(?:${numPat})${sp})?(?:원|달러|불|\\$|억원|만원|조원|경원|억불|만불|조불|경불)?`, "g");
+const enRegex = new RegExp(`(?:\\$)${sp}(?:${numPat})(?:\\.\\d+)?${sp}(?:T|B|M|Trillion|Billion|Million)(?:${sp}(?:dollars|USD|불))?|\\b(?:${numPat})(?:\\.\\d+)?${sp}(?:T|B|M|Trillion|Billion|Million)\\b(?:${sp}(?:dollars|USD|불))?`, "ig");
 
 // Tooltip Element
 let tooltipEl = null;
@@ -44,22 +44,91 @@ function getActiveRate() {
 }
 
 function parseKoreanNumber(str) {
-  let total = 0;
-  const parts = str.match(/[\d,]+(?:\.\d+)?\s*(?:경|조|억|만|천)?/g);
-  if (!parts) return 0;
-  
-  for (const part of parts) {
-    const numMatch = part.match(/[\d,]+(?:\.\d+)?/);
-    if (!numMatch) continue;
-    let num = parseFloat(numMatch[0].replace(/,/g, ''));
-    if (part.includes('경')) num *= 10000000000000000;
-    else if (part.includes('조')) num *= 1000000000000;
-    else if (part.includes('억')) num *= 100000000;
-    else if (part.includes('만')) num *= 10000;
-    else if (part.includes('천')) num *= 1000;
-    total += num;
+  let grandTotal = 0;
+  let currentSubTotal = 0;
+
+  const majorUnits = {
+    '경': 10000000000000000,
+    '조': 1000000000000,
+    '억': 100000000,
+    '만': 10000
+  };
+
+  const minorUnits = {
+    '천': 1000,
+    '백': 100,
+    '십': 10
+  };
+
+  const regex = /([\d,]+(?:\.\d+)?)\s*([경조억만천백십]*)|([경조억만천백십]+)/g;
+  let match;
+
+  while ((match = regex.exec(str)) !== null) {
+    if (match[1] !== undefined) {
+      const numStr = match[1].replace(/,/g, '');
+      let num = parseFloat(numStr);
+      if (isNaN(num)) continue;
+      const units = match[2] || '';
+
+      if (!units) {
+        currentSubTotal += num;
+      } else {
+        let hasMajor = false;
+        let unitMult = 1;
+
+        for (const char of units) {
+          if (majorUnits[char]) {
+            hasMajor = true;
+          } else if (minorUnits[char]) {
+            unitMult *= minorUnits[char];
+          }
+        }
+
+        if (hasMajor) {
+          let val = num * unitMult;
+          currentSubTotal += val;
+
+          for (const char of units) {
+            if (majorUnits[char]) {
+              grandTotal += currentSubTotal * majorUnits[char];
+              currentSubTotal = 0;
+            }
+          }
+        } else {
+          currentSubTotal += num * unitMult;
+        }
+      }
+    } else if (match[3] !== undefined) {
+      const units = match[3];
+      let hasMajor = false;
+      let unitMult = 1;
+
+      for (const char of units) {
+        if (majorUnits[char]) {
+          hasMajor = true;
+        } else if (minorUnits[char]) {
+          unitMult *= minorUnits[char];
+        }
+      }
+
+      if (hasMajor) {
+        if (currentSubTotal === 0) currentSubTotal = 1;
+        currentSubTotal *= unitMult;
+        for (const char of units) {
+          if (majorUnits[char]) {
+            grandTotal += currentSubTotal * majorUnits[char];
+            currentSubTotal = 0;
+          }
+        }
+      } else {
+        if (currentSubTotal === 0) currentSubTotal = 1;
+        currentSubTotal *= unitMult;
+      }
+    }
   }
-  return total;
+
+  grandTotal += currentSubTotal;
+  return grandTotal;
 }
 
 function parseEnglishNumber(str) {
@@ -85,11 +154,13 @@ function formatKorean(num) {
   const uk = Math.floor(num / 100000000);
   num %= 100000000;
   const man = Math.floor(num / 10000);
+  const won = Math.floor(num % 10000);
   
   if (gyeong > 0) result += `${gyeong.toLocaleString()}경 `;
   if (jo > 0) result += `${jo.toLocaleString()}조 `;
   if (uk > 0) result += `${uk.toLocaleString()}억 `;
   if (man > 0) result += `${man.toLocaleString()}만 `;
+  if (won > 0) result += `${won.toLocaleString()}`;
   
   return result.trim() + "원";
 }
@@ -106,7 +177,7 @@ function convertValue(text) {
   let baseVal = 0;
   let isUSD = false;
   
-  if (text.match(enRegex) || text.includes('$') || text.includes('달러') || text.includes('USD')) {
+  if (text.match(enRegex) || text.includes('$') || text.includes('달러') || text.includes('USD') || text.includes('불')) {
     isUSD = true;
     baseVal = text.match(enRegex) ? parseEnglishNumber(text) : parseKoreanNumber(text);
     const krwVal = baseVal * rate;
