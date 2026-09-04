@@ -4,20 +4,41 @@ let settings = {
   customRateEnabled: false,
   customRate: 1350,
   exchangeRate: 1350,
+  eurExchangeRate: 1460,
+  cnyExchangeRate: 187,
+  jpyExchangeRate: 9.0,
   ignoredUrls: []
 };
+
+function stripPostposition(str) {
+  if (!str) return '';
+  return str.replace(/(?<=(?:원|달러|불|\$|유로|euro|euros|EUR|€|위안|위안화|CNY|RMB|yuan|엔|엔화|JPY|yen|¥|억|조|경|억원|만원|조원|경원|억불|만불|조불|경불|억유로|만유로|조유로|경유로|억위안|만위안|조위안|경위안|억엔|만엔|조엔|경엔|만|\d))(?:을|를|이|가|은|는|에|의|와|과|도|로|으로|까지|부터|보다)$/g, '').trim();
+}
 
 // Regex Patterns
 const sp = "\\s*";
 const numPat = "[0-9]+(?:,[0-9]+)*";
-const krRegex = new RegExp(`\\b(?:(?:${numPat})(?:\\.\\d+)?${sp}(?:경|조|억|만|천)+${sp})+(?:(?:${numPat})${sp})?(?:원|달러|불|\\$|억원|만원|조원|경원|억불|만불|조불|경불)?`, "g");
-const enRegex = new RegExp(`(?:\\$)${sp}(?:${numPat})(?:\\.\\d+)?${sp}(?:T|B|M|Trillion|Billion|Million)(?:${sp}(?:dollars|USD|불))?|\\b(?:${numPat})(?:\\.\\d+)?${sp}(?:T|B|M|Trillion|Billion|Million)\\b(?:${sp}(?:dollars|USD|불))?`, "ig");
+const unitsPat = "(?:경|조|억|만|천)+";
+const currPat = "(?:원|달러|불|\\$|유로|euro|euros|EUR|€|위안|위안화|CNY|RMB|yuan|엔|엔화|JPY|yen|¥|억원|만원|조원|경원|억불|만불|조불|경불|억유로|만유로|조유로|경유로|억위안|만위안|조위안|경위안|억엔|만엔|조엔|경엔)";
+const postposPat = "(?:을|를|이|가|은|는|에|의|와|과|도|로|으로|까지|부터|보다|만|등)?";
+
+const krUnitRegexStr = `(?:(?:${numPat})(?:\\.\\d+)?${sp}${unitsPat}${sp})+(?:(?:${numPat})${sp})?${currPat}?${postposPat}`;
+const directCurrRegexStr = `(?:${numPat})(?:\\.\\d+)?${sp}${currPat}${postposPat}`;
+
+const currNamesPat = "(?:dollars|USD|불|euros|EUR|euro|유로|yuan|RMB|CNY|위안|yen|JPY|엔)";
+const tbmPat = "(?:T|B|M|Trillion|Billion|Million)";
+
+const symbolEnRegexStr = `(?:\\$|€|¥)${sp}(?:${numPat})(?:\\.\\d+)?(?:${sp}${tbmPat})?(?:${sp}${currNamesPat})?${postposPat}`;
+const unitEnRegexStr = `\\b(?:${numPat})(?:\\.\\d+)?${sp}${tbmPat}(?:${sp}${currNamesPat})?${postposPat}`;
+
+const krRegex = new RegExp(`(?:${krUnitRegexStr})|(?:${directCurrRegexStr})`, "g");
+const enRegex = new RegExp(`(?:${symbolEnRegexStr})|(?:${unitEnRegexStr})`, "ig");
 
 // Tooltip Element
 let tooltipEl = null;
 
 function init() {
-  chrome.storage.local.get(['enabled', 'customRateEnabled', 'customRate', 'exchangeRate', 'ignoredUrls'], (data) => {
+  chrome.storage.local.get(['enabled', 'customRateEnabled', 'customRate', 'exchangeRate', 'eurExchangeRate', 'cnyExchangeRate', 'jpyExchangeRate', 'ignoredUrls'], (data) => {
     settings = { ...settings, ...data };
     
     const currentUrl = window.location.href;
@@ -35,12 +56,24 @@ function init() {
     if (changes.customRateEnabled) settings.customRateEnabled = changes.customRateEnabled.newValue;
     if (changes.customRate) settings.customRate = changes.customRate.newValue;
     if (changes.exchangeRate) settings.exchangeRate = changes.exchangeRate.newValue;
+    if (changes.eurExchangeRate) settings.eurExchangeRate = changes.eurExchangeRate.newValue;
+    if (changes.cnyExchangeRate) settings.cnyExchangeRate = changes.cnyExchangeRate.newValue;
+    if (changes.jpyExchangeRate) settings.jpyExchangeRate = changes.jpyExchangeRate.newValue;
     if (changes.ignoredUrls) settings.ignoredUrls = changes.ignoredUrls.newValue;
   });
 }
 
-function getActiveRate() {
-  return settings.customRateEnabled ? settings.customRate : settings.exchangeRate;
+function getActiveRates() {
+  const usdRate = settings.customRateEnabled ? settings.customRate : settings.exchangeRate;
+  const baseUsd = settings.exchangeRate || 1350;
+  const baseEur = settings.eurExchangeRate || 1460;
+  const baseCny = settings.cnyExchangeRate || 187;
+  const baseJpy = settings.jpyExchangeRate || 9.0;
+  
+  const eurRate = settings.customRateEnabled ? Math.round((usdRate / baseUsd) * baseEur) : baseEur;
+  const cnyRate = settings.customRateEnabled ? Math.round((usdRate / baseUsd) * baseCny) : baseCny;
+  const jpyRate = settings.customRateEnabled ? Math.round((usdRate / baseUsd) * baseJpy * 100) / 100 : baseJpy;
+  return { usdRate, eurRate, cnyRate, jpyRate };
 }
 
 function parseKoreanNumber(str) {
@@ -166,38 +199,105 @@ function formatKorean(num) {
 }
 
 function formatEnglish(num) {
-  if (num >= 1000000000000) return `$${(num / 1000000000000).toFixed(2).replace(/\.00$/, '')}T`;
-  if (num >= 1000000000) return `$${(num / 1000000000).toFixed(2).replace(/\.00$/, '')}B`;
-  if (num >= 1000000) return `$${(num / 1000000).toFixed(2).replace(/\.00$/, '')}M`;
-  return `$${num.toLocaleString()}`;
+  const rounded = Math.round(num);
+  if (rounded >= 1000000000000) return `$${(rounded / 1000000000000).toFixed(2).replace(/\.00$/, '')}T`;
+  if (rounded >= 1000000000) return `$${(rounded / 1000000000).toFixed(2).replace(/\.00$/, '')}B`;
+  if (rounded >= 1000000) return `$${(rounded / 1000000).toFixed(2).replace(/\.00$/, '')}M`;
+  return `$${rounded.toLocaleString('en-US')}`;
+}
+
+function formatCurrencySymbol(num, symbol) {
+  const rounded = Math.round(num);
+  if (rounded === 0) return `${symbol}0`;
+  if (rounded >= 1000000000000) return `${symbol}${(rounded / 1000000000000).toFixed(2).replace(/\.00$/, '')}T`;
+  if (rounded >= 1000000000) return `${symbol}${(rounded / 1000000000).toFixed(2).replace(/\.00$/, '')}B`;
+  if (rounded >= 1000000) return `${symbol}${(rounded / 1000000).toFixed(2).replace(/\.00$/, '')}M`;
+  return `${symbol}${rounded.toLocaleString('en-US')}`;
+}
+
+function convertValueToTarget(rawText, targetCurrency) {
+  const text = stripPostposition(rawText);
+  const { usdRate, eurRate, cnyRate, jpyRate } = getActiveRates();
+  
+  const isJPY = text.includes('엔') || /\b(JPY|yen)\b/i.test(text);
+  const isCNY = !isJPY && (text.includes('¥') || /\b(CNY|RMB)\b/i.test(text) || /\byuan\b/i.test(text) || text.includes('위안'));
+  const isEUR = !isJPY && !isCNY && (text.includes('€') || /\bEUR\b/i.test(text) || /\beuro(s)?\b/i.test(text) || text.includes('유로'));
+  const isUSD = !isJPY && !isCNY && !isEUR && (text.match(enRegex) || text.includes('$') || text.includes('달러') || /\bUSD\b/i.test(text) || text.includes('불'));
+
+  const isSymbolPrefixed = /^[\$€¥]/.test(text);
+  const isEnglishUnit = isSymbolPrefixed || /\b(?:T|B|M|Trillion|Billion|Million)\b/i.test(text);
+
+  let baseVal = 0;
+  let baseKrwVal = 0;
+  let detectTitle = '';
+  let originalCurr = 'KRW';
+
+  if (isJPY) {
+    baseVal = isEnglishUnit ? parseEnglishNumber(text) : parseKoreanNumber(text);
+    baseKrwVal = baseVal * jpyRate;
+    detectTitle = '엔화 수치 감지';
+    originalCurr = 'JPY';
+  } else if (isCNY) {
+    baseVal = isEnglishUnit ? parseEnglishNumber(text) : parseKoreanNumber(text);
+    baseKrwVal = baseVal * cnyRate;
+    detectTitle = '위안화 수치 감지';
+    originalCurr = 'CNY';
+  } else if (isEUR) {
+    baseVal = isEnglishUnit ? parseEnglishNumber(text) : parseKoreanNumber(text);
+    baseKrwVal = baseVal * eurRate;
+    detectTitle = '유로화 수치 감지';
+    originalCurr = 'EUR';
+  } else if (isUSD) {
+    baseVal = isEnglishUnit ? parseEnglishNumber(text) : parseKoreanNumber(text);
+    baseKrwVal = baseVal * usdRate;
+    detectTitle = '영미식 수치 감지';
+    originalCurr = 'USD';
+  } else {
+    baseVal = parseKoreanNumber(text);
+    baseKrwVal = baseVal;
+    detectTitle = '한국식 수치 감지';
+    originalCurr = 'KRW';
+  }
+
+  const target = targetCurrency || (originalCurr === 'KRW' ? 'USD' : 'KRW');
+
+  let convertedText = '';
+  let rateInfoStr = '';
+
+  if (target === 'KRW') {
+    convertedText = formatKorean(baseKrwVal);
+    rateInfoStr = originalCurr === 'KRW' ? '적용 통화: 원화 (KRW)' : `원화 환산 완료`;
+  } else if (target === 'USD') {
+    const usdVal = baseKrwVal / usdRate;
+    convertedText = formatEnglish(usdVal);
+    rateInfoStr = `적용 환율: ₩${usdRate.toLocaleString()}/$`;
+  } else if (target === 'EUR') {
+    const eurVal = baseKrwVal / eurRate;
+    convertedText = formatCurrencySymbol(eurVal, '€');
+    rateInfoStr = `적용 환율: ₩${eurRate.toLocaleString()}/€`;
+  } else if (target === 'CNY') {
+    const cnyVal = baseKrwVal / cnyRate;
+    convertedText = formatCurrencySymbol(cnyVal, '¥');
+    rateInfoStr = `적용 환율: ₩${cnyRate.toLocaleString()}/위안`;
+  } else if (target === 'JPY') {
+    const jpyVal = baseKrwVal / jpyRate;
+    const jpy100Rate = Math.round(jpyRate * 100);
+    convertedText = formatCurrencySymbol(jpyVal, '¥');
+    rateInfoStr = `적용 환율: ₩${jpyRate}/¥ (₩${jpy100Rate}/100엔)`;
+  }
+
+  return {
+    title: detectTitle,
+    rawText: `기본 수치: ${baseVal.toLocaleString()}`,
+    value: `환율 환산: ${convertedText}`,
+    rateInfo: rateInfoStr,
+    originalCurr: originalCurr,
+    selectedTarget: target
+  };
 }
 
 function convertValue(text) {
-  const rate = getActiveRate();
-  let baseVal = 0;
-  let isUSD = false;
-  
-  if (text.match(enRegex) || text.includes('$') || text.includes('달러') || text.includes('USD') || text.includes('불')) {
-    isUSD = true;
-    baseVal = text.match(enRegex) ? parseEnglishNumber(text) : parseKoreanNumber(text);
-    const krwVal = baseVal * rate;
-    return {
-      title: '영미식 단위 감지',
-      rawText: `기본 수치: ${baseVal.toLocaleString()}`,
-      value: `환율 환산: ${formatKorean(krwVal)}`,
-      rateInfo: `적용 환율: ₩${rate.toLocaleString()}/$`
-    };
-  } else {
-    // KRW or KR unit
-    baseVal = parseKoreanNumber(text);
-    const usdVal = baseVal / rate;
-    return {
-      title: '한국식 단위 감지',
-      rawText: `기본 수치: ${baseVal.toLocaleString()}`,
-      value: `환율 환산: ${formatEnglish(usdVal)}`,
-      rateInfo: `적용 환율: ₩${rate.toLocaleString()}/$`
-    };
-  }
+  return convertValueToTarget(text);
 }
 
 const BLOCK_TAGS = new Set(['DIV', 'P', 'LI', 'TD', 'TH', 'TR', 'UL', 'OL', 'TABLE', 'H1', 'H2', 'H3', 'H4', 'H5', 'H6', 'SECTION', 'ARTICLE', 'HEADER', 'FOOTER', 'ASIDE', 'NAV', 'BLOCKQUOTE', 'FIGCAPTION', 'FIGURE', 'DD', 'DT', 'DL', 'ADDRESS', 'MAIN']);
@@ -383,6 +483,30 @@ function setupObserver() {
   observer.observe(document.body, { childList: true, subtree: true, characterData: true });
 }
 
+let currentTooltipText = "";
+let activeTargetCurrency = null;
+
+function updateTooltipTarget(targetCurr) {
+  if (!currentTooltipText) return;
+  activeTargetCurrency = targetCurr;
+  const result = convertValueToTarget(currentTooltipText, targetCurr);
+  if (!result) return;
+
+  tooltipEl.querySelector('.crossscale-tooltip-title').textContent = result.title;
+  tooltipEl.querySelector('.crossscale-tooltip-raw').textContent = result.rawText;
+  tooltipEl.querySelector('.crossscale-tooltip-value').textContent = result.value;
+  tooltipEl.querySelector('.crossscale-tooltip-rate').textContent = result.rateInfo;
+
+  const buttons = tooltipEl.querySelectorAll('.crossscale-currency-btn');
+  buttons.forEach(btn => {
+    if (btn.dataset.curr === result.selectedTarget) {
+      btn.classList.add('active');
+    } else {
+      btn.classList.remove('active');
+    }
+  });
+}
+
 function createTooltip() {
   tooltipEl = document.createElement('div');
   tooltipEl.id = 'crossscale-tooltip';
@@ -396,6 +520,14 @@ function createTooltip() {
       <button class="crossscale-copy-raw" style="background:none; border:none; color:#adb5bd; cursor:pointer; padding:0; margin-left:12px; font-size:14px;" title="기본 수치 복사">📋</button>
     </div>
     
+    <div class="crossscale-currency-switch">
+      <button class="crossscale-currency-btn" data-curr="KRW">₩ 원</button>
+      <button class="crossscale-currency-btn" data-curr="USD">$ 달러</button>
+      <button class="crossscale-currency-btn" data-curr="EUR">€ 유로</button>
+      <button class="crossscale-currency-btn" data-curr="CNY">¥ 위안</button>
+      <button class="crossscale-currency-btn" data-curr="JPY">¥ 엔</button>
+    </div>
+
     <div style="display: flex; justify-content: space-between; align-items: center;">
       <div class="crossscale-tooltip-value"></div>
       <button class="crossscale-copy-value" style="background:none; border:none; color:#adb5bd; cursor:pointer; padding:0; margin-left:12px; font-size:14px;" title="환산 수치 복사">📋</button>
@@ -408,6 +540,14 @@ function createTooltip() {
   tooltipEl.addEventListener('mouseenter', () => clearTimeout(hideTimeout));
   tooltipEl.addEventListener('mouseleave', hideTooltip);
   
+  tooltipEl.querySelectorAll('.crossscale-currency-btn').forEach(btn => {
+    btn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      const curr = btn.dataset.curr;
+      updateTooltipTarget(curr);
+    });
+  });
+
   document.querySelector('.crossscale-copy-raw').addEventListener('click', (e) => {
     e.stopPropagation();
     const val = tooltipEl.querySelector('.crossscale-tooltip-raw').textContent.replace('기본 수치: ', '');
@@ -436,13 +576,13 @@ function showTooltip(e, text) {
   const isIgnored = settings.ignoredUrls && settings.ignoredUrls.some(url => currentUrl.startsWith(url));
   
   if (!settings.enabled || isIgnored) return;
-  const result = convertValue(text);
-  if (!result) return;
   
-  tooltipEl.querySelector('.crossscale-tooltip-title').textContent = result.title;
-  tooltipEl.querySelector('.crossscale-tooltip-raw').textContent = result.rawText;
-  tooltipEl.querySelector('.crossscale-tooltip-value').textContent = result.value;
-  tooltipEl.querySelector('.crossscale-tooltip-rate').textContent = result.rateInfo;
+  currentTooltipText = text;
+  const initialResult = convertValueToTarget(text);
+  if (!initialResult) return;
+
+  activeTargetCurrency = initialResult.selectedTarget;
+  updateTooltipTarget(activeTargetCurrency);
   
   tooltipEl.classList.add('visible');
   

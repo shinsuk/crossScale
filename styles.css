@@ -57,3 +57,38 @@
   margin-top: 4px;
   text-align: right;
 }
+
+.crossscale-currency-switch {
+  display: flex;
+  gap: 3px;
+  margin-top: 6px;
+  margin-bottom: 6px;
+  background: rgba(255, 255, 255, 0.08);
+  padding: 2px;
+  border-radius: 4px;
+}
+
+.crossscale-currency-btn {
+  flex: 1;
+  background: transparent;
+  border: none;
+  color: #adb5bd;
+  font-size: 11px;
+  padding: 2px 6px;
+  border-radius: 3px;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  text-align: center;
+  user-select: none;
+}
+
+.crossscale-currency-btn:hover {
+  color: #fff;
+  background: rgba(255, 255, 255, 0.1);
+}
+
+.crossscale-currency-btn.active {
+  background: #0d6efd;
+  color: #ffffff;
+  font-weight: 600;
+}

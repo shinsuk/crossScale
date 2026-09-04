@@ -9,8 +9,16 @@ document.addEventListener('DOMContentLoaded', () => {
   let settings = {
     customRateEnabled: false,
     customRate: 1350,
-    exchangeRate: 1350
+    exchangeRate: 1350,
+    eurExchangeRate: 1460,
+    cnyExchangeRate: 187,
+    jpyExchangeRate: 9.0
   };
+
+  function stripPostposition(str) {
+    if (!str) return '';
+    return str.replace(/(?<=(?:원|달러|불|\$|유로|euro|euros|EUR|€|위안|위안화|CNY|RMB|yuan|엔|엔화|JPY|yen|¥|억|조|경|억원|만원|조원|경원|억불|만불|조불|경불|억유로|만유로|조유로|경유로|억위안|만위안|조위안|경위안|억엔|만엔|조엔|경엔|만|\d))(?:을|를|이|가|은|는|에|의|와|과|도|로|으로|까지|부터|보다)$/g, '').trim();
+  }
 
   const quickConvertInput = document.getElementById('quick-convert-input');
   const quickConvertResult = document.getElementById('quick-convert-result');
@@ -18,12 +26,34 @@ document.addEventListener('DOMContentLoaded', () => {
   // Regex Patterns
   const sp = "\\s*";
   const numPat = "[0-9]+(?:,[0-9]+)*";
-  const krRegex = new RegExp(`\\b(?:(?:${numPat})(?:\\.\\d+)?${sp}(?:경|조|억|만|천)+${sp})+(?:(?:${numPat})${sp})?(?:원|달러|불|\\$|억원|만원|조원|경원|억불|만불|조불|경불)?`, "g");
-  const enRegex = new RegExp(`(?:\\$)${sp}(?:${numPat})(?:\\.\\d+)?${sp}(?:T|B|M|Trillion|Billion|Million)(?:${sp}(?:dollars|USD|불))?|\\b(?:${numPat})(?:\\.\\d+)?${sp}(?:T|B|M|Trillion|Billion|Million)\\b(?:${sp}(?:dollars|USD|불))?`, "ig");
+  const unitsPat = "(?:경|조|억|만|천)+";
+  const currPat = "(?:원|달러|불|\\$|유로|euro|euros|EUR|€|위안|위안화|CNY|RMB|yuan|엔|엔화|JPY|yen|¥|억원|만원|조원|경원|억불|만불|조불|경불|억유로|만유로|조유로|경유로|억위안|만위안|조위안|경위안|억엔|만엔|조엔|경엔)";
+  const postposPat = "(?:을|를|이|가|은|는|에|의|와|과|도|로|으로|까지|부터|보다|만|등)?";
+
+  const krUnitRegexStr = `(?:(?:${numPat})(?:\\.\\d+)?${sp}${unitsPat}${sp})+(?:(?:${numPat})${sp})?${currPat}?${postposPat}`;
+  const directCurrRegexStr = `(?:${numPat})(?:\\.\\d+)?${sp}${currPat}${postposPat}`;
+
+  const currNamesPat = "(?:dollars|USD|불|euros|EUR|euro|유로|yuan|RMB|CNY|위안|yen|JPY|엔)";
+  const tbmPat = "(?:T|B|M|Trillion|Billion|Million)";
+
+  const symbolEnRegexStr = `(?:\\$|€|¥)${sp}(?:${numPat})(?:\\.\\d+)?(?:${sp}${tbmPat})?(?:${sp}${currNamesPat})?${postposPat}`;
+  const unitEnRegexStr = `\\b(?:${numPat})(?:\\.\\d+)?${sp}${tbmPat}(?:${sp}${currNamesPat})?${postposPat}`;
+
+  const krRegex = new RegExp(`(?:${krUnitRegexStr})|(?:${directCurrRegexStr})`, "g");
+  const enRegex = new RegExp(`(?:${symbolEnRegexStr})|(?:${unitEnRegexStr})`, "ig");
   const combinedRegex = new RegExp(`(${krRegex.source})|(${enRegex.source})`, 'ig');
 
-  function getActiveRate() {
-    return settings.customRateEnabled ? settings.customRate : settings.exchangeRate;
+  function getActiveRates() {
+    const usdRate = settings.customRateEnabled ? settings.customRate : settings.exchangeRate;
+    const baseUsd = settings.exchangeRate || 1350;
+    const baseEur = settings.eurExchangeRate || 1460;
+    const baseCny = settings.cnyExchangeRate || 187;
+    const baseJpy = settings.jpyExchangeRate || 9.0;
+    
+    const eurRate = settings.customRateEnabled ? Math.round((usdRate / baseUsd) * baseEur) : baseEur;
+    const cnyRate = settings.customRateEnabled ? Math.round((usdRate / baseUsd) * baseCny) : baseCny;
+    const jpyRate = settings.customRateEnabled ? Math.round((usdRate / baseUsd) * baseJpy * 100) / 100 : baseJpy;
+    return { usdRate, eurRate, cnyRate, jpyRate };
   }
 
   function parseKoreanNumber(str) {
@@ -155,30 +185,62 @@ document.addEventListener('DOMContentLoaded', () => {
     return `$${num.toLocaleString()}`;
   }
 
-  function convertValue(text) {
-    const rate = getActiveRate();
+  function convertValue(rawText) {
+    const text = stripPostposition(rawText);
+    const { usdRate, eurRate, cnyRate, jpyRate } = getActiveRates();
     let baseVal = 0;
-    let isUSD = false;
     
-    if (text.match(enRegex) || text.includes('$') || text.includes('달러') || text.includes('USD') || text.includes('불')) {
-      isUSD = true;
+    const isJPY = text.includes('엔') || /\b(JPY|yen)\b/i.test(text);
+    const isCNY = !isJPY && (text.includes('¥') || /\b(CNY|RMB)\b/i.test(text) || /\byuan\b/i.test(text) || text.includes('위안'));
+    const isEUR = !isJPY && !isCNY && (text.includes('€') || /\bEUR\b/i.test(text) || /\beuro(s)?\b/i.test(text) || text.includes('유로'));
+    const isUSD = !isJPY && !isCNY && !isEUR && (text.match(enRegex) || text.includes('$') || text.includes('달러') || /\bUSD\b/i.test(text) || text.includes('불'));
+    
+    if (isJPY) {
       baseVal = text.match(enRegex) ? parseEnglishNumber(text) : parseKoreanNumber(text);
-      const krwVal = baseVal * rate;
+      const krwVal = baseVal * jpyRate;
+      const jpy100Rate = Math.round(jpyRate * 100);
+      return {
+        title: '엔화 단위 감지',
+        rawText: `기본 수치: ${baseVal.toLocaleString()}`,
+        value: `환율 환산: ${formatKorean(krwVal)}`,
+        rateInfo: `적용 환율: ₩${jpyRate}/¥ (₩${jpy100Rate}/100¥)`
+      };
+    } else if (isCNY) {
+      baseVal = text.match(enRegex) ? parseEnglishNumber(text) : parseKoreanNumber(text);
+      const krwVal = baseVal * cnyRate;
+      return {
+        title: '위안화 단위 감지',
+        rawText: `기본 수치: ${baseVal.toLocaleString()}`,
+        value: `환율 환산: ${formatKorean(krwVal)}`,
+        rateInfo: `적용 환율: ₩${cnyRate.toLocaleString()}/¥`
+      };
+    } else if (isEUR) {
+      baseVal = text.match(enRegex) ? parseEnglishNumber(text) : parseKoreanNumber(text);
+      const krwVal = baseVal * eurRate;
+      return {
+        title: '유로화 단위 감지',
+        rawText: `기본 수치: ${baseVal.toLocaleString()}`,
+        value: `환율 환산: ${formatKorean(krwVal)}`,
+        rateInfo: `적용 환율: ₩${eurRate.toLocaleString()}/€`
+      };
+    } else if (isUSD) {
+      baseVal = text.match(enRegex) ? parseEnglishNumber(text) : parseKoreanNumber(text);
+      const krwVal = baseVal * usdRate;
       return {
         title: '영미식 단위 감지',
         rawText: `기본 수치: ${baseVal.toLocaleString()}`,
         value: `환율 환산: ${formatKorean(krwVal)}`,
-        rateInfo: `적용 환율: ₩${rate.toLocaleString()}/$`
+        rateInfo: `적용 환율: ₩${usdRate.toLocaleString()}/$`
       };
     } else {
       // KRW or KR unit
       baseVal = parseKoreanNumber(text);
-      const usdVal = baseVal / rate;
+      const usdVal = baseVal / usdRate;
       return {
         title: '한국식 단위 감지',
         rawText: `기본 수치: ${baseVal.toLocaleString()}`,
         value: `환율 환산: ${formatEnglish(usdVal)}`,
-        rateInfo: `적용 환율: ₩${rate.toLocaleString()}/$`
+        rateInfo: `적용 환율: ₩${usdRate.toLocaleString()}/$`
       };
     }
   }
@@ -243,11 +305,11 @@ document.addEventListener('DOMContentLoaded', () => {
     }
     
     quickConvertResult.style.display = 'block';
-    quickConvertResult.innerHTML = `<span style="color: #dc3545; font-size: 12px;">감지된 수치 또는 화폐 단위가 없습니다.<br>(예: 3천억 달러, $1.5B, 5천만원)</span>`;
+    quickConvertResult.innerHTML = `<span style="color: #dc3545; font-size: 12px;">감지된 수치 또는 화폐 단위가 없습니다.<br>(예: 3,500유로를, 270만 엔으로, 3천억 달러, $1.5B)</span>`;
   }
 
   // Load current settings
-  chrome.storage.local.get(['enabled', 'customRateEnabled', 'customRate', 'exchangeRate', 'ignoredUrls'], (data) => {
+  chrome.storage.local.get(['enabled', 'customRateEnabled', 'customRate', 'exchangeRate', 'eurExchangeRate', 'cnyExchangeRate', 'jpyExchangeRate', 'ignoredUrls'], (data) => {
     enableExt.checked = data.enabled !== false;
     customRateToggle.checked = data.customRateEnabled || false;
     customRateInput.value = data.customRate || 1350;
@@ -256,10 +318,15 @@ document.addEventListener('DOMContentLoaded', () => {
     settings.customRateEnabled = data.customRateEnabled || false;
     settings.customRate = data.customRate || 1350;
     settings.exchangeRate = data.exchangeRate || 1350;
+    settings.eurExchangeRate = data.eurExchangeRate || 1460;
+    settings.cnyExchangeRate = data.cnyExchangeRate || 187;
+    settings.jpyExchangeRate = data.jpyExchangeRate || 9.0;
 
-    if (data.exchangeRate) {
-      rateInfo.textContent = `현재 API 환율: ₩${data.exchangeRate.toLocaleString()}`;
-    }
+    const usdStr = data.exchangeRate ? data.exchangeRate.toLocaleString() : '1,350';
+    const eurStr = data.eurExchangeRate ? data.eurExchangeRate.toLocaleString() : '1,460';
+    const cnyStr = data.cnyExchangeRate ? data.cnyExchangeRate.toLocaleString() : '187';
+    const jpyStr = data.jpyExchangeRate ? Math.round(data.jpyExchangeRate * 100).toLocaleString() : '900';
+    rateInfo.textContent = `현재 API 환율: ₩${usdStr}/$ | ₩${eurStr}/€ | ₩${cnyStr}/위안 | ₩${jpyStr}/100엔`;
     
     if (data.ignoredUrls) {
       ignoredUrlsInput.value = data.ignoredUrls.join('\n');

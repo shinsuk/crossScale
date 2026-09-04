@@ -1,0 +1,12 @@
+{
+  "name": "crossscale",
+  "version": "1.13.0",
+  "description": "CrossScale Chrome Extension Unit Test Suite",
+  "main": "content.js",
+  "scripts": {
+    "test": "node test.js"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC"
+}
