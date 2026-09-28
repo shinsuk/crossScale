@@ -35,7 +35,8 @@ chrome.runtime.onInstalled.addListener(() => {
     exchangeRate: 1350, // Default fallback
     eurExchangeRate: 1460, // Default fallback
     cnyExchangeRate: 187, // Default fallback
-    jpyExchangeRate: 9.0 // Default fallback (1 JPY = 9 KRW)
+    jpyExchangeRate: 9.0, // Default fallback (1 JPY = 9 KRW)
+    allowedUrls: []
   });
   fetchExchangeRate();
 });

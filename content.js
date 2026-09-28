@@ -7,7 +7,7 @@ let settings = {
   eurExchangeRate: 1460,
   cnyExchangeRate: 187,
   jpyExchangeRate: 9.0,
-  ignoredUrls: []
+  allowedUrls: []
 };
 
 function stripPostposition(str) {
@@ -38,13 +38,13 @@ const enRegex = new RegExp(`(?:${symbolEnRegexStr})|(?:${unitEnRegexStr})`, "ig"
 let tooltipEl = null;
 
 function init() {
-  chrome.storage.local.get(['enabled', 'customRateEnabled', 'customRate', 'exchangeRate', 'eurExchangeRate', 'cnyExchangeRate', 'jpyExchangeRate', 'ignoredUrls'], (data) => {
+  chrome.storage.local.get(['enabled', 'customRateEnabled', 'customRate', 'exchangeRate', 'eurExchangeRate', 'cnyExchangeRate', 'jpyExchangeRate', 'allowedUrls'], (data) => {
     settings = { ...settings, ...data };
     
     const currentUrl = window.location.href;
-    const isIgnored = settings.ignoredUrls && settings.ignoredUrls.some(url => currentUrl.startsWith(url));
+    const isAllowed = settings.allowedUrls && settings.allowedUrls.some(url => url && currentUrl.startsWith(url));
 
-    if (settings.enabled && !isIgnored) {
+    if (settings.enabled && isAllowed) {
       createTooltip();
       scanAndHighlight(document.body);
       setupObserver();
@@ -59,7 +59,7 @@ function init() {
     if (changes.eurExchangeRate) settings.eurExchangeRate = changes.eurExchangeRate.newValue;
     if (changes.cnyExchangeRate) settings.cnyExchangeRate = changes.cnyExchangeRate.newValue;
     if (changes.jpyExchangeRate) settings.jpyExchangeRate = changes.jpyExchangeRate.newValue;
-    if (changes.ignoredUrls) settings.ignoredUrls = changes.ignoredUrls.newValue;
+    if (changes.allowedUrls) settings.allowedUrls = changes.allowedUrls.newValue;
   });
 }
 

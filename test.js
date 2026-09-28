@@ -180,6 +180,19 @@ runTest('트윗 문장 내 $ 기호 수치 7개 전체 추출 검증', () => {
   assert.deepStrictEqual(matches, expected);
 });
 
+console.log('\n[카테고리 6] 지정 사이트(allowedUrls) 허용 로직 테스트');
+runTest('지정한 URL 목록에 포함된 페이지 허용 검증', () => {
+  const allowedUrls = ['https://finance.naver.com/', 'https://example.com/item'];
+  const testUrlMatch = 'https://finance.naver.com/item/main.naver';
+  const testUrlNoMatch = 'https://google.com/';
+
+  const isAllowed1 = allowedUrls.some(url => url && testUrlMatch.startsWith(url));
+  const isAllowed2 = allowedUrls.some(url => url && testUrlNoMatch.startsWith(url));
+
+  assert.strictEqual(isAllowed1, true);
+  assert.strictEqual(isAllowed2, false);
+});
+
 console.log('\n====================================================');
 console.log(`📊 테스트 결과: 총 ${passedCount + failedCount}개 검증 중 ${passedCount}개 성공, ${failedCount}개 실패`);
 console.log('====================================================\n');

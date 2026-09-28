@@ -3,7 +3,7 @@ document.addEventListener('DOMContentLoaded', () => {
   const customRateToggle = document.getElementById('custom-rate-toggle');
   const customRateInput = document.getElementById('custom-rate-input');
   const rateInfo = document.getElementById('current-rate-info');
-  const ignoredUrlsInput = document.getElementById('ignored-urls');
+  const allowedUrlsInput = document.getElementById('allowed-urls');
   const addCurrentUrlBtn = document.getElementById('add-current-url');
 
   let settings = {
@@ -309,7 +309,7 @@ document.addEventListener('DOMContentLoaded', () => {
   }
 
   // Load current settings
-  chrome.storage.local.get(['enabled', 'customRateEnabled', 'customRate', 'exchangeRate', 'eurExchangeRate', 'cnyExchangeRate', 'jpyExchangeRate', 'ignoredUrls'], (data) => {
+  chrome.storage.local.get(['enabled', 'customRateEnabled', 'customRate', 'exchangeRate', 'eurExchangeRate', 'cnyExchangeRate', 'jpyExchangeRate', 'allowedUrls'], (data) => {
     enableExt.checked = data.enabled !== false;
     customRateToggle.checked = data.customRateEnabled || false;
     customRateInput.value = data.customRate || 1350;
@@ -328,8 +328,8 @@ document.addEventListener('DOMContentLoaded', () => {
     const jpyStr = data.jpyExchangeRate ? Math.round(data.jpyExchangeRate * 100).toLocaleString() : '900';
     rateInfo.textContent = `현재 API 환율: ₩${usdStr}/$ | ₩${eurStr}/€ | ₩${cnyStr}/위안 | ₩${jpyStr}/100엔`;
     
-    if (data.ignoredUrls) {
-      ignoredUrlsInput.value = data.ignoredUrls.join('\n');
+    if (data.allowedUrls) {
+      allowedUrlsInput.value = data.allowedUrls.join('\n');
     }
 
     updateQuickConversion();
@@ -356,9 +356,9 @@ document.addEventListener('DOMContentLoaded', () => {
     }
   });
 
-  ignoredUrlsInput.addEventListener('input', () => {
-    const urls = ignoredUrlsInput.value.split('\n').map(url => url.trim()).filter(url => url.length > 0);
-    chrome.storage.local.set({ ignoredUrls: urls });
+  allowedUrlsInput.addEventListener('input', () => {
+    const urls = allowedUrlsInput.value.split('\n').map(url => url.trim()).filter(url => url.length > 0);
+    chrome.storage.local.set({ allowedUrls: urls });
   });
 
   addCurrentUrlBtn.addEventListener('click', () => {
@@ -366,11 +366,11 @@ document.addEventListener('DOMContentLoaded', () => {
       if (tabs.length > 0 && tabs[0].url) {
         // You might only want origin, but the user asked for current page's URL
         const currentUrl = new URL(tabs[0].url).origin + new URL(tabs[0].url).pathname; // To make it simpler without queries
-        let urls = ignoredUrlsInput.value.split('\n').map(u => u.trim()).filter(u => u.length > 0);
+        let urls = allowedUrlsInput.value.split('\n').map(u => u.trim()).filter(u => u.length > 0);
         if (!urls.includes(currentUrl)) {
           urls.push(currentUrl);
-          ignoredUrlsInput.value = urls.join('\n');
-          chrome.storage.local.set({ ignoredUrls: urls });
+          allowedUrlsInput.value = urls.join('\n');
+          chrome.storage.local.set({ allowedUrls: urls });
         }
       }
     });
