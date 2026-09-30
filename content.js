@@ -26,7 +26,7 @@ const krUnitRegexStr = `(?:(?:${numPat})(?:\\.\\d+)?${sp}${unitsPat}${sp})+(?:(?
 const directCurrRegexStr = `(?:${numPat})(?:\\.\\d+)?${sp}${currPat}${postposPat}`;
 
 const currNamesPat = "(?:dollars|USD|불|euros|EUR|euro|유로|yuan|RMB|CNY|위안|yen|JPY|엔)";
-const tbmPat = "(?:T|B|M|Trillion|Billion|Million)";
+const tbmPat = "(?<![a-zA-Z])(?:Trillion|Billion|Million|T|B|M)(?![a-zA-Z])";
 
 const symbolEnRegexStr = `(?:\\$|€|¥)${sp}(?:${numPat})(?:\\.\\d+)?(?:${sp}${tbmPat})?(?:${sp}${currNamesPat})?${postposPat}`;
 const unitEnRegexStr = `\\b(?:${numPat})(?:\\.\\d+)?${sp}${tbmPat}(?:${sp}${currNamesPat})?${postposPat}`;
@@ -36,19 +36,50 @@ const enRegex = new RegExp(`(?:${symbolEnRegexStr})|(?:${unitEnRegexStr})`, "ig"
 
 // Tooltip Element
 let tooltipEl = null;
+let isObserverSetup = false;
+let isTemporarilyDisabled = false;
+
+function disableCurrentPage() {
+  isTemporarilyDisabled = true;
+  if (typeof observer !== 'undefined' && observer) {
+    observer.disconnect();
+    isObserverSetup = false;
+  }
+  if (tooltipEl) {
+    tooltipEl.classList.remove('visible');
+  }
+  const highlights = document.querySelectorAll('.crossscale-highlight');
+  highlights.forEach(span => {
+    const parent = span.parentNode;
+    if (parent) {
+      const textNode = document.createTextNode(span.textContent);
+      parent.replaceChild(textNode, span);
+      parent.normalize();
+    }
+  });
+}
+
+function checkAndApply() {
+  if (isTemporarilyDisabled) return;
+  const currentUrl = window.location.href;
+  const isAllowed = settings.allowedUrls && settings.allowedUrls.some(url => url && currentUrl.startsWith(url));
+
+  if (settings.enabled && isAllowed) {
+    if (!tooltipEl) {
+      createTooltip();
+    }
+    scanAndHighlight(document.body);
+    if (!isObserverSetup) {
+      setupObserver();
+      isObserverSetup = true;
+    }
+  }
+}
 
 function init() {
   chrome.storage.local.get(['enabled', 'customRateEnabled', 'customRate', 'exchangeRate', 'eurExchangeRate', 'cnyExchangeRate', 'jpyExchangeRate', 'allowedUrls'], (data) => {
     settings = { ...settings, ...data };
-    
-    const currentUrl = window.location.href;
-    const isAllowed = settings.allowedUrls && settings.allowedUrls.some(url => url && currentUrl.startsWith(url));
-
-    if (settings.enabled && isAllowed) {
-      createTooltip();
-      scanAndHighlight(document.body);
-      setupObserver();
-    }
+    checkAndApply();
   });
 
   chrome.storage.onChanged.addListener((changes) => {
@@ -59,8 +90,46 @@ function init() {
     if (changes.eurExchangeRate) settings.eurExchangeRate = changes.eurExchangeRate.newValue;
     if (changes.cnyExchangeRate) settings.cnyExchangeRate = changes.cnyExchangeRate.newValue;
     if (changes.jpyExchangeRate) settings.jpyExchangeRate = changes.jpyExchangeRate.newValue;
-    if (changes.allowedUrls) settings.allowedUrls = changes.allowedUrls.newValue;
+    if (changes.allowedUrls) {
+      settings.allowedUrls = changes.allowedUrls.newValue;
+      checkAndApply();
+    }
   });
+
+  if (typeof chrome !== 'undefined' && chrome.runtime && chrome.runtime.onMessage) {
+    chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
+      if (request.action === 'forceDisableCurrentPage') {
+        disableCurrentPage();
+        if (sendResponse) sendResponse({ status: 'ok' });
+        return true;
+      } else if (request.action === 'forceApplyToCurrentPage') {
+        isTemporarilyDisabled = false;
+        chrome.storage.local.get(['enabled'], (data) => {
+          if (data.enabled !== undefined) settings.enabled = data.enabled;
+          if (settings.enabled !== false) {
+            if (!tooltipEl) {
+              createTooltip();
+            }
+            scanAndHighlight(document.body);
+            if (!isObserverSetup) {
+              setupObserver();
+              isObserverSetup = true;
+            }
+          }
+          if (sendResponse) sendResponse({ status: 'ok' });
+        });
+        return true;
+      } else if (request.action === 'applyToCurrentPage' || request.action === 'reScan') {
+        chrome.storage.local.get(['allowedUrls', 'enabled'], (data) => {
+          if (data.allowedUrls) settings.allowedUrls = data.allowedUrls;
+          if (data.enabled !== undefined) settings.enabled = data.enabled;
+          checkAndApply();
+          if (sendResponse) sendResponse({ status: 'ok' });
+        });
+        return true;
+      }
+    });
+  }
 }
 
 function getActiveRates() {
@@ -168,11 +237,10 @@ function parseEnglishNumber(str) {
   const numMatch = str.match(/[\d,]+(?:\.\d+)?/);
   if (!numMatch) return 0;
   let num = parseFloat(numMatch[0].replace(/,/g, ''));
-  const lowerStr = str.toLowerCase();
   
-  if (lowerStr.includes('t') || lowerStr.includes('trillion')) num *= 1000000000000;
-  else if (lowerStr.includes('b') || lowerStr.includes('billion')) num *= 1000000000;
-  else if (lowerStr.includes('m') || lowerStr.includes('million')) num *= 1000000;
+  if (/(?<![a-z])(?:t|trillion)(?![a-z])/i.test(str)) num *= 1000000000000;
+  else if (/(?<![a-z])(?:b|billion)(?![a-z])/i.test(str)) num *= 1000000000;
+  else if (/(?<![a-z])(?:m|million)(?![a-z])/i.test(str)) num *= 1000000;
   
   return num;
 }
@@ -572,10 +640,7 @@ let hideTimeout = null;
 function showTooltip(e, text) {
   clearTimeout(hideTimeout);
   
-  const currentUrl = window.location.href;
-  const isIgnored = settings.ignoredUrls && settings.ignoredUrls.some(url => currentUrl.startsWith(url));
-  
-  if (!settings.enabled || isIgnored) return;
+  if (!settings.enabled) return;
   
   currentTooltipText = text;
   const initialResult = convertValueToTarget(text);

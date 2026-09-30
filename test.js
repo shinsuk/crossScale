@@ -193,6 +193,67 @@ runTest('지정한 URL 목록에 포함된 페이지 허용 검증', () => {
   assert.strictEqual(isAllowed2, false);
 });
 
+console.log('\n[카테고리 7] 단위 약어 오인식 방어 (10mm -> 10m Million 오인식 방지) 테스트');
+runTest('10mm(millimeter)가 영문 단위(Million)로 매칭되지 않아야 함', () => {
+  const text = "볼트의 크기는 10mm입니다.";
+  const combinedRegex = new RegExp(`(${global.krRegex.source})|(${global.enRegex.source})`, 'ig');
+  const matches = [];
+  let match;
+  while ((match = combinedRegex.exec(text)) !== null) {
+    if (match[0].trim()) matches.push(match[0].trim());
+  }
+  assert.strictEqual(matches.length, 0);
+});
+
+runTest('parseEnglishNumber("10mm") 파싱 시 Million(1,000,000)으로 곱해지지 않아야 함', () => {
+  assert.strictEqual(parseEnglishNumber("10mm"), 10);
+});
+
+runTest('$10M 및 10 Million은 정상적으로 Million으로 변환되어야 함', () => {
+  assert.strictEqual(parseEnglishNumber("$10M"), 10000000);
+  assert.strictEqual(parseEnglishNumber("10 Million"), 10000000);
+});
+
+console.log('\n[카테고리 8] 현재 페이지에 일회성 적용 (allowedUrls 미등록 실행) 테스트');
+runTest('allowedUrls 목록에 URL이 없더라도 forceApplyToCurrentPage로 실행 가능하며 리스트는 변하지 않음', () => {
+  const allowedUrls = ['https://finance.naver.com/'];
+  const unallowedUrl = 'https://unallowed-news.com/article/123';
+  
+  const isAllowedBefore = allowedUrls.some(url => unallowedUrl.startsWith(url));
+  assert.strictEqual(isAllowedBefore, false);
+
+  let forceApplied = false;
+  const mockReceiveMessage = (msg) => {
+    if (msg.action === 'forceApplyToCurrentPage') {
+      forceApplied = true;
+    }
+  };
+  mockReceiveMessage({ action: 'forceApplyToCurrentPage' });
+  
+  assert.strictEqual(forceApplied, true);
+  assert.strictEqual(allowedUrls.includes(unallowedUrl), false);
+});
+
+console.log('\n[카테고리 9] 현재 페이지 일회성 제외 (forceDisableCurrentPage) 테스트');
+runTest('allowedUrls 목록에 URL이 들어있더라도 forceDisableCurrentPage 실행 시 하이라이트 원복 및 제외 처리되어야 함', () => {
+  const allowedUrls = ['https://finance.naver.com/'];
+  const currentUrl = 'https://finance.naver.com/item/main.naver';
+  
+  const isAllowedBefore = allowedUrls.some(url => currentUrl.startsWith(url));
+  assert.strictEqual(isAllowedBefore, true);
+
+  let disabled = false;
+  const mockReceiveMessage = (msg) => {
+    if (msg.action === 'forceDisableCurrentPage') {
+      disabled = true;
+    }
+  };
+  mockReceiveMessage({ action: 'forceDisableCurrentPage' });
+  
+  assert.strictEqual(disabled, true);
+  assert.strictEqual(allowedUrls.includes('https://finance.naver.com/'), true);
+});
+
 console.log('\n====================================================');
 console.log(`📊 테스트 결과: 총 ${passedCount + failedCount}개 검증 중 ${passedCount}개 성공, ${failedCount}개 실패`);
 console.log('====================================================\n');

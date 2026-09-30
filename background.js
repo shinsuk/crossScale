@@ -27,16 +27,26 @@ async function fetchExchangeRate() {
   }
 }
 
-chrome.runtime.onInstalled.addListener(() => {
-  chrome.storage.local.set({ 
-    enabled: true, 
-    customRateEnabled: false, 
-    customRate: 1350,
-    exchangeRate: 1350, // Default fallback
-    eurExchangeRate: 1460, // Default fallback
-    cnyExchangeRate: 187, // Default fallback
-    jpyExchangeRate: 9.0, // Default fallback (1 JPY = 9 KRW)
-    allowedUrls: []
+chrome.runtime.onInstalled.addListener(async () => {
+  const existing = await chrome.storage.local.get([
+    'enabled', 'customRateEnabled', 'customRate', 
+    'exchangeRate', 'eurExchangeRate', 'cnyExchangeRate', 'jpyExchangeRate', 'allowedUrls', 'ignoredUrls'
+  ]);
+
+  // 구버전 블랙리스트 레거시 키(ignoredUrls) 삭제 정리
+  if (existing.ignoredUrls !== undefined) {
+    await chrome.storage.local.remove('ignoredUrls');
+  }
+
+  await chrome.storage.local.set({ 
+    enabled: existing.enabled !== undefined ? existing.enabled : true, 
+    customRateEnabled: existing.customRateEnabled !== undefined ? existing.customRateEnabled : false, 
+    customRate: existing.customRate || 1350,
+    exchangeRate: existing.exchangeRate || 1350,
+    eurExchangeRate: existing.eurExchangeRate || 1460,
+    cnyExchangeRate: existing.cnyExchangeRate || 187,
+    jpyExchangeRate: existing.jpyExchangeRate || 9.0,
+    allowedUrls: existing.allowedUrls || []
   });
   fetchExchangeRate();
 });

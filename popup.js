@@ -5,6 +5,8 @@ document.addEventListener('DOMContentLoaded', () => {
   const rateInfo = document.getElementById('current-rate-info');
   const allowedUrlsInput = document.getElementById('allowed-urls');
   const addCurrentUrlBtn = document.getElementById('add-current-url');
+  const applyCurrentPageBtn = document.getElementById('apply-current-page');
+  const disableCurrentPageBtn = document.getElementById('disable-current-page');
 
   let settings = {
     customRateEnabled: false,
@@ -34,7 +36,7 @@ document.addEventListener('DOMContentLoaded', () => {
   const directCurrRegexStr = `(?:${numPat})(?:\\.\\d+)?${sp}${currPat}${postposPat}`;
 
   const currNamesPat = "(?:dollars|USD|불|euros|EUR|euro|유로|yuan|RMB|CNY|위안|yen|JPY|엔)";
-  const tbmPat = "(?:T|B|M|Trillion|Billion|Million)";
+  const tbmPat = "(?<![a-zA-Z])(?:Trillion|Billion|Million|T|B|M)(?![a-zA-Z])";
 
   const symbolEnRegexStr = `(?:\\$|€|¥)${sp}(?:${numPat})(?:\\.\\d+)?(?:${sp}${tbmPat})?(?:${sp}${currNamesPat})?${postposPat}`;
   const unitEnRegexStr = `\\b(?:${numPat})(?:\\.\\d+)?${sp}${tbmPat}(?:${sp}${currNamesPat})?${postposPat}`;
@@ -148,11 +150,10 @@ document.addEventListener('DOMContentLoaded', () => {
     const numMatch = str.match(/[\d,]+(?:\.\d+)?/);
     if (!numMatch) return 0;
     let num = parseFloat(numMatch[0].replace(/,/g, ''));
-    const lowerStr = str.toLowerCase();
     
-    if (lowerStr.includes('t') || lowerStr.includes('trillion')) num *= 1000000000000;
-    else if (lowerStr.includes('b') || lowerStr.includes('billion')) num *= 1000000000;
-    else if (lowerStr.includes('m') || lowerStr.includes('million')) num *= 1000000;
+    if (/(?<![a-z])(?:t|trillion)(?![a-z])/i.test(str)) num *= 1000000000000;
+    else if (/(?<![a-z])(?:b|billion)(?![a-z])/i.test(str)) num *= 1000000000;
+    else if (/(?<![a-z])(?:m|million)(?![a-z])/i.test(str)) num *= 1000000;
     
     return num;
   }
@@ -361,20 +362,75 @@ document.addEventListener('DOMContentLoaded', () => {
     chrome.storage.local.set({ allowedUrls: urls });
   });
 
+  // 1. 현재 사이트 추가 (리스트에 URL 추가 + 저장 + 현재 페이지 적용)
   addCurrentUrlBtn.addEventListener('click', () => {
     chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
       if (tabs.length > 0 && tabs[0].url) {
-        // You might only want origin, but the user asked for current page's URL
-        const currentUrl = new URL(tabs[0].url).origin + new URL(tabs[0].url).pathname; // To make it simpler without queries
+        const currentTab = tabs[0];
+        const currentUrl = new URL(currentTab.url).origin + new URL(currentTab.url).pathname;
         let urls = allowedUrlsInput.value.split('\n').map(u => u.trim()).filter(u => u.length > 0);
         if (!urls.includes(currentUrl)) {
           urls.push(currentUrl);
           allowedUrlsInput.value = urls.join('\n');
-          chrome.storage.local.set({ allowedUrls: urls });
+          chrome.storage.local.set({ allowedUrls: urls }, () => {
+            if (currentTab.id) {
+              chrome.tabs.sendMessage(currentTab.id, { action: 'applyToCurrentPage' }, () => {
+                if (chrome.runtime && chrome.runtime.lastError) {}
+              });
+            }
+          });
+        } else {
+          if (currentTab.id) {
+            chrome.tabs.sendMessage(currentTab.id, { action: 'applyToCurrentPage' }, () => {
+              if (chrome.runtime && chrome.runtime.lastError) {}
+            });
+          }
         }
+
+        const origText = addCurrentUrlBtn.textContent;
+        addCurrentUrlBtn.textContent = '✅ 사이트 추가됨!';
+        setTimeout(() => {
+          addCurrentUrlBtn.textContent = origText;
+        }, 1500);
       }
     });
   });
+
+  // 2. 현재 페이지 적용 (리스트에 추가하지 않고 일회성 강제 적용만 실행)
+  if (applyCurrentPageBtn) {
+    applyCurrentPageBtn.addEventListener('click', () => {
+      chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
+        if (tabs.length > 0 && tabs[0].id) {
+          chrome.tabs.sendMessage(tabs[0].id, { action: 'forceApplyToCurrentPage' }, () => {
+            if (chrome.runtime && chrome.runtime.lastError) {}
+          });
+          const origText = applyCurrentPageBtn.textContent;
+          applyCurrentPageBtn.textContent = '✅ 적용 완료!';
+          setTimeout(() => {
+            applyCurrentPageBtn.textContent = origText;
+          }, 1500);
+        }
+      });
+    });
+  }
+
+  // 3. 현재 페이지 제외 (리스트에 남아있더라도 현재 탭에서 하이라이트 원복 및 제외)
+  if (disableCurrentPageBtn) {
+    disableCurrentPageBtn.addEventListener('click', () => {
+      chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
+        if (tabs.length > 0 && tabs[0].id) {
+          chrome.tabs.sendMessage(tabs[0].id, { action: 'forceDisableCurrentPage' }, () => {
+            if (chrome.runtime && chrome.runtime.lastError) {}
+          });
+          const origText = disableCurrentPageBtn.textContent;
+          disableCurrentPageBtn.textContent = '✅ 제외 완료!';
+          setTimeout(() => {
+            disableCurrentPageBtn.textContent = origText;
+          }, 1500);
+        }
+      });
+    });
+  }
 
   // Bind quick converter event
   quickConvertInput.addEventListener('input', updateQuickConversion);
